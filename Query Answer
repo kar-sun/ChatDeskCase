@@ -1,0 +1,64 @@
+#Create temp table: sum credits applied to each account(converting $ to credits), provides earliest date credits provided to account,removes accounts with 0 credits or less 
+with total_credits_and_applied_date as(
+
+SELECT 
+anonymous_id as id,
+min(applied_at) as applied_date,
+sum(credit_amount)/.8 as credits_total, 
+count(anonymous_id) as count
+
+FROM 
+`growth-ops-recruiting.growth_ops_recruiting.promotion_credits_applied` 
+
+GROUP BY 
+ anonymous_id
+
+HAVING 
+sum(credit_amount)>0
+)
+
+
+#Credits applied to invoices for each account after promotional credits received (not summed)
+#Select x.id, sum(x.amount),
+SELECT 
+x.id as stripe_customer_id,
+x.total_credits_applied,
+y.credits_total as total_credits_received,
+case when x.total_credits_applied>y.credits_total then 'started paying' else 'still paying with credits' end as conversion_status,
+case when x.total_credits_applied<y.credits_total then 'promo credits remaining' else 'used all promo credits' end as credit_status
+
+From
+(
+Select 
+id,
+sum(amount) as total_credits_applied,
+max(applied_at) as credit_last_used,
+
+From
+(
+SELECT 
+
+a.anonymous_id as id, 
+a.amount as amount,
+a.applied_at as applied_at,
+c.applied_date as applied_date
+
+FROM 
+`growth-ops-recruiting.growth_ops_recruiting.all_credits_applied_to_invoices` a
+
+RIGHT JOIN 
+total_credits_and_applied_date c
+
+On 
+a.anonymous_id = c.id
+
+Where
+ a.applied_at>c.applied_date
+)
+Group by id) x
+
+JOIN 
+total_credits_and_applied_date y
+
+On
+x.id=y.id
